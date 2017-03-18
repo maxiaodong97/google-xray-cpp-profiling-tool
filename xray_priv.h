@@ -13,7 +13,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include "xray/xray.h"
+#include "xray.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -60,8 +60,10 @@ struct XRayTraceCapture;
 struct XRayTraceBufferEntry {
   uint32_t depth_addr;
   uint32_t annotation_index;
-  uint64_t start_tick;
-  uint64_t end_tick;
+  uint64_t total_ticks;
+#if !defined(__pnacl__) && defined(XRAY_PACK_BUFFER)
+  void *call_site;
+#endif
 };
 
 

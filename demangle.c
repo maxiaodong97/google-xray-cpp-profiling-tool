@@ -2,7 +2,10 @@
  * Use of this source code is governed by a BSD-style license that can be
  * found in the LICENSE file. */
 
-#include "xray/xray_priv.h"
+#include "xray_priv.h"
+#ifdef LINUX
+#include <cxxabi.h>
+#endif
 
 /* Note name demangling requires linking against libstdc++                 */
 /* If your platform does not support __cxa_demangle, re-compile XRay with: */
@@ -17,7 +20,11 @@ char* __cxa_demangle(const char* __mangled_name, char* __output_buffer,
 const char* XRayDemangle(char* demangle, size_t size, const char* symbol) {
 #if !defined(XRAY_NO_DEMANGLE)
   int stat;
+#ifdef LINUX
+  __cxxabiv1::__cxa_demangle(symbol, demangle, &size, &stat);
+#else
   __cxa_demangle(symbol, demangle, &size, &stat);
+#endif
   if (stat == 0)
     return demangle;
 #endif

@@ -11,10 +11,12 @@
 
 /* _GNU_SOURCE must be defined prior to the inclusion of string.h
  * so that strnlen is available with glibc */
+#ifndef LINUX
 #define _GNU_SOURCE
+#endif
 #include <stdlib.h>
 #include <string.h>
-#include "xray/xray_priv.h"
+#include "xray_priv.h"
 
 #if defined(XRAY)
 

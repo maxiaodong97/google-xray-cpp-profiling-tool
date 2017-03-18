@@ -14,7 +14,7 @@
 #include <string.h>
 #include <sys/time.h>
 #include <unistd.h>
-#include "xray/xray_priv.h"
+#include "xray_priv.h"
 
 #if defined(XRAY)
 
@@ -59,6 +59,7 @@ struct XRayTraceFrameEntry {
   uint64_t start_tsc;
   uint64_t end_tsc;
   uint64_t total_ticks;
+  uint64_t self_ticks;
   int annotation_count;
   bool valid;
 
@@ -321,7 +322,6 @@ void XRayFree(void* data) {
   free(data);
 }
 
-
 /* Main profile capture function that is called at the start */
 /* of every instrumented function.  This function is implicitly */
 /* called when code is compilied with the -finstrument-functions option */
@@ -330,6 +330,8 @@ void __pnacl_profile_func_enter(const char* this_fn) {
 #else
 void __cyg_profile_func_enter(void* this_fn, void* call_site) {
 #endif
+  uint64_t self_ticks;
+  GTSC(self_ticks);
   struct XRayTraceCapture* capture = g_xray_capture;
   if (capture && capture->recording) {
     uint32_t depth = capture->stack_depth;
@@ -337,11 +339,30 @@ void __cyg_profile_func_enter(void* this_fn, void* call_site) {
       struct XRayTraceStackEntry* se = &capture->stack[depth];
       uint32_t addr = (uint32_t)(uintptr_t)this_fn;
       se->depth_addr = XRAY_PACK_DEPTH_ADDR(depth, addr);
-      se->dest = capture->buffer_index;
       se->annotation_index = 0;
+      se->dest = capture->buffer_index;
+#if !defined(__pnacl__) && defined(XRAY_PACK_BUFFER)
+      uint32_t i = capture->frame.entry[capture->frame.head].start;
+      for (; i < capture->buffer_size; i++) {
+        struct XRayTraceBufferEntry *be = &capture->buffer[i];
+        if (be->call_site == call_site) {
+          se->dest = i;
+          break;
+        }
+      }
+#endif
+      if (se->dest == capture->buffer_index) {
+        capture->buffer_index =
+          XRayTraceIncrementIndexInline(capture, capture->buffer_index);
+      }
       GTSC(se->tsc);
-      capture->buffer_index =
-        XRayTraceIncrementIndexInline(capture, capture->buffer_index);
+      self_ticks = se->tsc - self_ticks;
+      i = capture->frame.head;
+      capture->frame.entry[i].self_ticks += self_ticks;
+      for (i = 0 ; i < depth; i++) {
+        struct XRayTraceStackEntry* prev_se = &capture->stack[i];
+        prev_se->tsc += self_ticks;
+      }
     }
     ++capture->stack_depth;
   }
@@ -367,9 +388,11 @@ void __cyg_profile_func_exit(void* this_fn, void* call_site) {
       struct XRayTraceBufferEntry* be = &capture->buffer[buffer_index];
       GTSC(tsc);
       be->depth_addr = se->depth_addr;
-      be->start_tick = se->tsc;
-      be->end_tick = tsc;
+      be->total_ticks += tsc - se->tsc;
       be->annotation_index = 0;
+#if !defined(__pnacl__) && defined(XRAY_PACK_BUFFER)
+      be->call_site = call_site;
+#endif
       if (0 != se->annotation_index)
         __xray_profile_append_annotation(capture, se, be);
     }
@@ -546,7 +569,8 @@ bool XRayFrameIsValid(struct XRayTraceCapture* capture, int i) {
 }
 
 uint64_t XRayFrameGetTotalTicks(struct XRayTraceCapture* capture, int i) {
-  return capture->frame.entry[i].total_ticks;
+  return capture->frame.entry[i].total_ticks -
+      capture->frame.entry[i].self_ticks;
 }
 
 int XRayFrameGetAnnotationCount(struct XRayTraceCapture* capture, int i) {
@@ -606,6 +630,7 @@ void XRayStartFrame(struct XRayTraceCapture* capture) {
       XRayTraceIncrementIndex(capture, capture->buffer_index);
   /* Set start of the frame we're about to trace */
   capture->frame.entry[i].start = capture->buffer_index;
+  capture->frame.entry[i].self_ticks = 0;
   capture->disabled = 0;
   capture->stack_depth = 1;
 

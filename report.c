@@ -5,6 +5,11 @@
 
 /* XRay -- a simple profiler for Native Client */
 
+#ifdef LINUX
+#ifndef __STDC_FORMAT_MACROS
+#define __STDC_FORMAT_MACROS
+#endif
+#endif
 #include <alloca.h>
 #include <errno.h>
 #include <inttypes.h>
@@ -14,7 +19,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include "xray/xray_priv.h"
+#include "xray_priv.h"
 
 #if defined(XRAY)
 
@@ -23,7 +28,6 @@ struct XRayTotal {
   int frame;
   uint64_t ticks;
 };
-
 
 /* Dumps the trace report for a given frame. */
 void XRayTraceReport(struct XRayTraceCapture* capture,
@@ -64,8 +68,7 @@ void XRayTraceReport(struct XRayTraceCapture* capture,
       uint32_t depth = XRAY_EXTRACT_DEPTH(e->depth_addr);
       uint32_t addr = XRAY_EXTRACT_ADDR(e->depth_addr);
       uint32_t annotation_index = e->annotation_index;
-      uint64_t ticks =
-          e->end_tick > e->start_tick ? e->end_tick - e->start_tick : 0;
+      uint64_t ticks =e->total_ticks;
       float percent = 100.0f * (float)ticks / total;
       if (percent >= percent_cutoff && ticks >= ticks_cutoff) {
         struct XRaySymbol* symbol;
@@ -199,11 +202,12 @@ void XRaySaveReport(struct XRayTraceCapture* capture,
                     float percent_cutoff,
                     int ticks_cutoff) {
   FILE* f;
-  f = fopen(filename, "wt");
+  f = fopen(filename, "w");
   if (NULL != f) {
     XRayReport(capture, f, percent_cutoff, ticks_cutoff);
     fclose(f);
   }
 }
+
 
 #endif  /* XRAY */

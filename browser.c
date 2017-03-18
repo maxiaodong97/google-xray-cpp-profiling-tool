@@ -18,7 +18,7 @@
 #include <string.h>
 #include <unistd.h>
 #include "ppapi/c/dev/ppb_trace_event_dev.h"
-#include "xray/xray_priv.h"
+#include "xray_priv.h"
 
 
 #if defined(XRAY)
